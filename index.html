@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Enhanced Novel Reader App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Georgia', serif; margin: 0; background: #f4f4f4; }
+        header { background: #6c5ce7; color: white; padding: 1em; text-align: center; }
+        #container { max-width: 700px; margin: 2em auto; background: white; padding: 2em; border-radius: 8px; }
+        #chapter-title { font-size: 1.3em; margin-bottom: 1em; }
+        #novel-content { line-height: 1.7; margin-bottom: 2em; min-height: 200px; }
+        nav, #controls { display: flex; justify-content: space-between; margin-bottom: 1em; }
+        button { background: #6c5ce7; color: white; border: none; padding: 0.6em 1.2em; border-radius: 4px; cursor: pointer; }
+        button:disabled { background: #b2bec3; cursor: default; }
+        select { padding: 0.5em; border-radius: 4px; border: 1px solid #b2bec3; }
+        #sidebar { float: left; width: 180px; margin-right: 2em; }
+        #chapter-list { list-style: none; padding: 0; }
+        #chapter-list li { padding: 0.5em; cursor: pointer; border-radius: 4px; }
+        #chapter-list li.active, #chapter-list li:hover { background: #dfe6e9; }
+        @media (max-width: 900px) {
+            #container { max-width: 95vw; }
+            #sidebar { float: none; width: 100%; margin-right: 0; margin-bottom: 1em; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Enhanced Novel Reader App</h1>
+    </header>
+    <div id="container">
+        <div style="display: flex; gap: 2em;">
+            <aside id="sidebar">
+                <h3>Chapters</h3>
+                <ul id="chapter-list"></ul>
+            </aside>
+            <main style="flex:1;">
+                <div id="chapter-title"></div>
+                <div id="novel-content"></div>
+                <div id="controls">
+                    <button id="read-aloud">Read Aloud</button>
+                    <button id="pause" disabled>Pause</button>
+                    <button id="resume" disabled>Resume</button>
+                    <button id="stop" disabled>Stop</button>
+                    <select id="voiceSelect"></select>
+                </div>
+                <nav>
+                    <button id="prev-chapter">Previous</button>
+                    <button id="next-chapter">Next</button>
+                </nav>
+            </main>
+        </div>
+    </div>
+    <script>
+        // Sample chapters
+        const chapters = [
+            {
+                title: "Chapter 1: The Beginning",
+                content: "Once upon a time, in a land far, far away, there was a brave hero who set out on a journey..."
+            },
+            {
+                title: "Chapter 2: The Challenge",
+                content: "The path became harder and monsters appeared. Yet, the hero pressed onward, determined to succeed..."
+            },
+            {
+                title: "Chapter 3: The Triumph",
+                content: "After many trials, the hero emerged victorious and returned home, celebrated by the entire kingdom."
+            }
+        ];
+        let currentChapter = parseInt(localStorage.getItem("novelAppCurrentChapter")) || 0;
+
+        // UI elements
+        const chapterTitle = document.getElementById('chapter-title');
+        const novelContent = document.getElementById('novel-content');
+        const prevBtn = document.getElementById('prev-chapter');
+        const nextBtn = document.getElementById('next-chapter');
+        const readBtn = document.getElementById('read-aloud');
+        const pauseBtn = document.getElementById('pause');
+        const resumeBtn = document.getElementById('resume');
+        const stopBtn = document.getElementById('stop');
+        const sidebar = document.getElementById('chapter-list');
+        const voiceSelect = document.getElementById('voiceSelect');
+        let utterance = null;
+
+        // Populate sidebar
+        function renderSidebar() {
+            sidebar.innerHTML = '';
+            chapters.forEach((ch, idx) => {
+                const li = document.createElement('li');
+                li.textContent = ch.title;
+                li.className = idx === currentChapter ? "active" : "";
+                li.onclick = () => { loadChapter(idx); };
+                sidebar.appendChild(li);
+            });
+        }
+
+        // Load chapter
+        function loadChapter(idx) {
+            currentChapter = idx;
+            chapterTitle.textContent = chapters[idx].title;
+            novelContent.textContent = chapters[idx].content;
+            prevBtn.disabled = idx === 0;
+            nextBtn.disabled = idx === chapters.length - 1;
+            localStorage.setItem("novelAppCurrentChapter", idx);
+            renderSidebar();
+            stopReading();
+        }
+
+        // Navigation buttons
+        prevBtn.onclick = () => { if(currentChapter > 0) loadChapter(currentChapter - 1); };
+        nextBtn.onclick = () => { if(currentChapter < chapters.length - 1) loadChapter(currentChapter + 1); };
+
+        // Speech synthesis
+        let voices = [];
+        function populateVoices() {
+            voices = window.speechSynthesis.getVoices();
+            voiceSelect.innerHTML = '';
+            voices.forEach((voice, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `${voice.name} (${voice.lang})${voice.default ? " [default]" : ""}`;
+                voiceSelect.appendChild(opt);
+            });
+        }
+        populateVoices();
+        if (typeof speechSynthesis !== "undefined") {
+            speechSynthesis.onvoiceschanged = populateVoices;
+        }
+
+        function resetButtons() {
+            pauseBtn.disabled = true;
+            stopBtn.disabled = true;
+            resumeBtn.disabled = true;
+            readBtn.disabled = false;
+        }
+        function stopReading() {
+            if (speechSynthesis.speaking) speechSynthesis.cancel();
+            resetButtons();
+        }
+
+        readBtn.onclick = function() {
+            if ('speechSynthesis' in window) {
+                stopReading();
+                utterance = new SpeechSynthesisUtterance(chapters[currentChapter].content);
+                const selectedVoice = voices[voiceSelect.value] || voices[0];
+                if (selectedVoice) utterance.voice = selectedVoice;
+                speechSynthesis.speak(utterance);
+                pauseBtn.disabled = false;
+                stopBtn.disabled = false;
+                readBtn.disabled = true;
+                resumeBtn.disabled = true;
+                utterance.onend = resetButtons;
+            } else {
+                alert('Sorry, your browser does not support speech synthesis.');
+            }
+        };
+        pauseBtn.onclick = function() {
+            if (speechSynthesis.speaking && !speechSynthesis.paused) {
+                speechSynthesis.pause();
+                resumeBtn.disabled = false;
+                pauseBtn.disabled = true;
+            }
+        };
+        resumeBtn.onclick = function() {
+            if (speechSynthesis.paused) {
+                speechSynthesis.resume();
+                resumeBtn.disabled = true;
+                pauseBtn.disabled = false;
+            }
+        };
+        stopBtn.onclick = stopReading;
+
+        // Initial load
+        renderSidebar();
+        loadChapter(currentChapter);
+        resetButtons();
+    </script>
+</body>
+</html>
